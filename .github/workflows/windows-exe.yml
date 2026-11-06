@@ -48,18 +48,22 @@ jobs:
         run: |
           Copy-Item ffmpeg-pkg ffmpeg-pkg.zip
           Expand-Archive ffmpeg-pkg.zip -DestinationPath ffmpegtmp
-          Get-ChildItem -Recurse -Filter "ffmpeg*.exe" ffmpegtmp |
+          Get-ChildItem -Recurse -Filter "ffmpeg.exe" ffmpegtmp |
+            Move-Item -Destination ffmpeg
+          Get-ChildItem -Recurse -Filter "ffprobe.exe" ffmpegtmp |
             Move-Item -Destination ffmpeg
           Remove-Item -Recurse -Force ffmpegtmp, ffmpeg-pkg, ffmpeg-pkg.zip
           Get-ChildItem ffmpeg
+          if (-not (Test-Path ffmpeg/ffprobe.exe)) { exit 1 }
 
       - name: ffmpeg entpacken (Linux)
         if: matrix.ffmpeg_layout == 'tar'
         run: |
           mkdir -p /tmp/fmf && tar xJf ffmpeg-pkg -C /tmp/fmf
-          mv /tmp/fmf/*/bin/ffmpeg* ffmpeg/
+          mv /tmp/fmf/*/bin/ffmpeg /tmp/fmf/*/bin/ffprobe ffmpeg/
           rm -rf /tmp/fmf ffmpeg-pkg
           ls -la ffmpeg/
+          test -f ffmpeg/ffprobe
 
       - name: EXE bauen (PyInstaller onefile, yt-dlp + ffmpeg eingebaut)
         run: pyinstaller --onefile --name ${{ matrix.out_name }}
