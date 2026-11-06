@@ -159,6 +159,18 @@ def http_head(url, timeout=15):
         return e.code, None
 
 
+def verify_clear_mp4(url):
+    """Klartext-Prüfung: erste 2 KB müssen eine MP4-ftyp-Signatur haben.
+    True = unverschlüsselt, False = vermutlich verschlüsselt/kein MP4."""
+    req = urllib.request.Request(
+        url, headers={"User-Agent": USER_AGENT, "Range": "bytes=0-2047"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return b"ftyp" in r.read(2048)[:32]
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def best_stream_url(pmd_url, probe=True):
     """Ermittelt die höchste verfügbare Bitrate für die gegebene PMD-Datei."""
     if not pmd_url:
@@ -276,9 +288,17 @@ def download(token, out_dir=None, test=False, no_sub=False):
         sys.exit(f"[!] Kein Slug in {token!r}")
     mv = fetch_movie(slug)
     if mv.get("hasDrm"):
-        sys.exit(f"[!] {mv.get('title')} ist DRM-geschützt – kein Download möglich.")
+        # DRM-Flag = der Player nutzt DASH+Widevine. Das CMS referenziert
+        # aber oft weiterhin einen unverschlüsselten MP4-Master – der wird
+        # unten per ftyp-Check verifiziert.
+        print("[*] DRM-Flag in der Lizenz – prüfe Klartext-Stream ...")
     url, bitrate = best_stream_url((mv.get("videoSource") or {}).get("pmdUrl"),
                                    probe=not no_sub)
+    if not verify_clear_mp4(url):
+        sys.exit("[!] Kein unverschlüsselter Stream verfügbar "
+                 "(Datei verschlüsselt oder kein Klartext-MP4).")
+    if mv.get("hasDrm"):
+        print("[i] Klartext-MP4 bestätigt – Download ohne DRM-Umgehung möglich.")
     out_dir = Path(out_dir or DEFAULT_OUT).expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)
     opts = build_opts(out_dir, test)
